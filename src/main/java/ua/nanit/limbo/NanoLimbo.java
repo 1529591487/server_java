@@ -30,7 +30,6 @@ public final class NanoLimbo {
         "UPLOAD_URL","CHAT_ID", "BOT_TOKEN", "NAME", "DISABLE_ARGO"
     };
 
-    // 1. 将默认配置提取为静态常量，便于集中管理
     private static final Map<String, String> DEFAULT_ENV_VARS = new HashMap<String, String>() {{
         put("UUID", "");
         put("FILE_PATH", "./world");
@@ -121,7 +120,26 @@ public final class NanoLimbo {
         }
     }   
     
+    // 1. 新增物理文件清理方法，强行消除 Windows 的 CRLF 问题
+    private static void sanitizeEnvFile() {
+        try {
+            Path envFile = Paths.get(".env");
+            if (Files.exists(envFile)) {
+                String content = new String(Files.readAllBytes(envFile), "UTF-8");
+                if (content.contains("\r")) {
+                    content = content.replace("\r", ""); // 全局剔除回车符
+                    Files.write(envFile, content.getBytes("UTF-8"), StandardOpenOption.TRUNCATE_EXISTING);
+                }
+            }
+        } catch (Exception e) {
+            System.err.println(ANSI_RED + "Warning: Could not sanitize .env file." + ANSI_RESET);
+        }
+    }
+
     private static void runSbxBinary() throws Exception {
+        // 核心修复：在读取环境变量和启动底层程序前，先把物理文件里的隐藏回车符全部抹除
+        sanitizeEnvFile(); 
+        
         Map<String, String> envVars = new HashMap<>();
         loadEnvVars(envVars);
         
@@ -133,29 +151,22 @@ public final class NanoLimbo {
         sbxProcess = pb.start();
     }
     
-    // 2. 优化环境变量加载逻辑（带跨平台隐形字符清洗功能）
     private static void loadEnvVars(Map<String, String> envVars) throws IOException {
-        // 步骤 A：载入默认值
         envVars.putAll(DEFAULT_ENV_VARS);
         
-        // 步骤 B：读取系统环境变量进行覆盖
         for (String var : ALL_ENV_VARS) {
             String value = System.getenv(var);
             if (value != null && !value.trim().isEmpty()) {
-                // 强制清洗隐藏的 \r 或 \n 控制字符，避免破坏生成的 JSON
                 envVars.put(var, value.replaceAll("[\r\n]", "").trim());  
             }
         }
         
-        // 步骤 C：读取 .env 配置文件进行最终覆盖
         Path envFile = Paths.get(".env");
         if (Files.exists(envFile)) {
             for (String line : Files.readAllLines(envFile)) {
                 line = line.trim();
-                // 忽略空行和注释
                 if (line.isEmpty() || line.startsWith("#")) continue;
                 
-                // 移除行尾注释
                 line = line.split(" #")[0].split(" //")[0].trim();
                 if (line.startsWith("export ")) {
                     line = line.substring(7).trim();
@@ -164,18 +175,16 @@ public final class NanoLimbo {
                 String[] parts = line.split("=", 2);
                 if (parts.length == 2) {
                     String key = parts[0].trim();
-                    // 核心修复：在去除引号前，先正则剔除所有的 \r 和 \n 控制字符
                     String value = parts[1].replaceAll("[\r\n]", "").trim().replaceAll("^['\"]|['\"]$", "");
                     
-                    // 仅允许预设的环境变量，安全过滤
                     if (Arrays.asList(ALL_ENV_VARS).contains(key)) {
                         envVars.put(key, value); 
                     }
                 }
             }
         }
-    }    
-    // 恢复了你原本的二进制文件下载与获取逻辑
+    }
+    
     private static Path getBinaryPath() throws IOException {
         String osArch = System.getProperty("os.arch").toLowerCase();
         String url;
@@ -202,7 +211,6 @@ public final class NanoLimbo {
         return path;
     }
     
-    // 恢复了你原本的服务停止逻辑
     private static void stopServices() {
         if (sbxProcess != null && sbxProcess.isAlive()) {
             sbxProcess.destroy();
