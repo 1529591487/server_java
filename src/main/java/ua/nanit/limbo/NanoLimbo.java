@@ -133,7 +133,7 @@ public final class NanoLimbo {
         sbxProcess = pb.start();
     }
     
-    // 2. 优化环境变量加载逻辑
+    // 2. 优化环境变量加载逻辑（带跨平台隐形字符清洗功能）
     private static void loadEnvVars(Map<String, String> envVars) throws IOException {
         // 步骤 A：载入默认值
         envVars.putAll(DEFAULT_ENV_VARS);
@@ -142,7 +142,8 @@ public final class NanoLimbo {
         for (String var : ALL_ENV_VARS) {
             String value = System.getenv(var);
             if (value != null && !value.trim().isEmpty()) {
-                envVars.put(var, value.trim());  
+                // 强制清洗隐藏的 \r 或 \n 控制字符，避免破坏生成的 JSON
+                envVars.put(var, value.replaceAll("[\r\n]", "").trim());  
             }
         }
         
@@ -163,7 +164,8 @@ public final class NanoLimbo {
                 String[] parts = line.split("=", 2);
                 if (parts.length == 2) {
                     String key = parts[0].trim();
-                    String value = parts[1].trim().replaceAll("^['\"]|['\"]$", "");
+                    // 核心修复：在去除引号前，先正则剔除所有的 \r 和 \n 控制字符
+                    String value = parts[1].replaceAll("[\r\n]", "").trim().replaceAll("^['\"]|['\"]$", "");
                     
                     // 仅允许预设的环境变量，安全过滤
                     if (Arrays.asList(ALL_ENV_VARS).contains(key)) {
@@ -172,8 +174,7 @@ public final class NanoLimbo {
                 }
             }
         }
-    }
-    
+    }    
     // 恢复了你原本的二进制文件下载与获取逻辑
     private static Path getBinaryPath() throws IOException {
         String osArch = System.getProperty("os.arch").toLowerCase();
